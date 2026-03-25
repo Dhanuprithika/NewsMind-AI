@@ -1,11 +1,22 @@
-from graph.workflow import graph
+import sys
+from io import TextIOWrapper
+if sys.stdout.encoding != 'utf-8':
+    assert isinstance(sys.stdout, TextIOWrapper)
+    sys.stdout.reconfigure(encoding='utf-8')
+
+from graph.workflow import graph, State
 
 # -------------------------------
 # 🔹 USER TYPE (CHANGE HERE)
 # -------------------------------
-result = graph.invoke({
-    "user_type": "student"   # try: student / teacher / investor / general
-})
+result = graph.invoke(State(
+    user_type="student",   # try: student / teacher / investor / general
+    articles=[],
+    user_memory={},
+    ranked_articles=[],
+    final_output=[],
+    daily_briefing=""
+))
 
 # -------------------------------
 # 📰 Articles Output
