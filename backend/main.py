@@ -111,6 +111,49 @@ async def stream_news(user_type: str = "general"):
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
+@app.get("/api/news/semantic-search")
+async def semantic_search(query: str, limit: int = 5, use_llm: bool = False):
+    """
+    Look for past news in our deep memory (SQLite + FAISS) using True Vector Semantic Search.
+    Prioritizes meaning over exact semantic match.
+    Pass `use_llm=true` to optionally re-rank the vector search results.
+    """
+    from agents.retrieval_agent import hybrid_search
+    
+    try:
+        # Step 1 & 2: Vector embedding search + Optional LLM Reranking
+        results = hybrid_search(query, top_k=limit, use_llm_rerank=use_llm)
+        
+        if not results:
+            return {"status": "success", "query": query, "count": 0, "results": []}
+
+        return {
+            "status": "success",
+            "query": query,
+            "count": len(results),
+            "results": results
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/news/history")
+async def get_history(limit: int = 20):
+    """
+    Get the latest intelligence from our archive.
+    """
+    import sqlite3
+    from database.sqlite_db import DB_PATH
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM articles WHERE is_processed = 1 ORDER BY timestamp DESC LIMIT ?", (limit,))
+        rows = cursor.fetchall()
+        conn.close()
+        return {"status": "success", "history": [dict(row) for row in rows]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/health")
 async def health_check():
     """Simple endpoint to verify the API is running."""

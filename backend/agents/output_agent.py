@@ -3,6 +3,7 @@ import json
 import re
 import time
 from groq import Groq
+from backend.database.sqlite_db import update_article_intelligence
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
@@ -27,11 +28,6 @@ Generate two specific pieces of content for this article:
 Return your response in EXACT JSON format with these keys:
 "summary": "the summary text...",
 "video_script": "the anchor script text..."
-
-Rules:
-- Professional tone.
-- No meta-commentary.
-- No markdown inside strings.
 """
 
     try:
@@ -42,41 +38,38 @@ Rules:
             response_format={"type": "json_object"}
         )
 
-        # Groq returns a specialized response for JSON mode
         res_data = json.loads(response.choices[0].message.content)
         return res_data.get("summary"), res_data.get("video_script")
-    
     except Exception as e:
-        print(f"  ⚠️ Warning: Intelligence extraction failed for an article. Root cause: {e}")
-        return "Summary generation skipped due to rate limit constraints.", "Video script generated manually is required."
+        return "Summary generation skipped.", "Video script unavailable."
 
 def output_agent(state):
-    print(f"\n[🎬 OUTPUT AGENT]: Finalizing intelligence packages (Combined Single-Call mode to avoid Rate Limits)...")
+    print(f"\n[🎬 OUTPUT AGENT]: Finalizing intelligence packages (Persisting to Deep Memory)...")
     
     articles = state.get("ranked_articles", [])
     user_type = state.get("user_type", "general")
     final_output = []
 
-    # Limit to top 5 articles
     for i, article in enumerate(articles[:5]):
-        print(f"  📝 [LOG]: Synthesizing Package (Summary + Script) for Article {i+1}: {article.get('title')[:30]}...")
+        print(f"  🧠 [ARCHIVE]: Saving Intelligence for: {article.get('title')[:40]}...")
         
-        # 1. Combined call saves 50% on API requests and tokens
+        # 1. Generate core content
         summary, script = generate_article_package(article, user_type)
-        
         article["summary"] = summary
         article["video_script"] = script
         
-        # Metadata for future video team's integration
-        article["video_status"] = "pending_synthesis"
-        article["video_url"] = None
-
-        final_output.append(article)
+        # 2. Update Article metadata in SQLite Database (Persistent Storage)
+        article_id = article.get("link", article.get("id"))
+        update_article_intelligence(
+            article_id=article_id,
+            analysis=article.get("analysis", {}),
+            summary=summary,
+            video_script=script
+        )
         
-        # Short sleep to prevent TPM (Tokens per Minute) spikes
+        final_output.append(article)
         time.sleep(0.5)
 
     state["final_output"] = final_output
-    print("[🎬 OUTPUT AGENT]: Processing complete. System fully operational.")
-
+    print("[🎬 OUTPUT AGENT]: Deep Memory Sync COMPLETE.")
     return state
