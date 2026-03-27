@@ -1,0 +1,11 @@
+langgraph
+feedparser
+groq
+python-dotenv
+fastapi
+uvicorn
+pydantic
+requests
+beautifulsoup4
+trafilatura
+python-dateutil

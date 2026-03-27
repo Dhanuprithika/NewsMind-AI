@@ -3,7 +3,7 @@ import json
 import re
 import time
 from groq import Groq
-from backend.database.sqlite_db import update_article_intelligence
+from database.sqlite_db import update_article_intelligence
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
@@ -44,31 +44,19 @@ Return your response in EXACT JSON format with these keys:
         return "Summary generation skipped.", "Video script unavailable."
 
 def output_agent(state):
-    print(f"\n[🎬 OUTPUT AGENT]: Finalizing intelligence packages (Persisting to Deep Memory)...")
+    """
+    Finalize the intelligence package for the dashboard.
+    For token economy, we no longer generate per-article deep summaries here.
+    Summaries are now generated on-demand when 'Read More' is clicked.
+    """
+    print(f"\n[🎬 OUTPUT AGENT]: Reporting final dashboard intelligence...")
     
     articles = state.get("ranked_articles", [])
-    user_type = state.get("user_type", "general")
-    final_output = []
-
-    for i, article in enumerate(articles[:5]):
-        print(f"  🧠 [ARCHIVE]: Saving Intelligence for: {article.get('title')[:40]}...")
-        
-        # 1. Generate core content
-        summary, script = generate_article_package(article, user_type)
-        article["summary"] = summary
-        article["video_script"] = script
-        
-        # 2. Update Article metadata in SQLite Database (Persistent Storage)
-        article_id = article.get("link", article.get("id"))
-        update_article_intelligence(
-            article_id=article_id,
-            analysis=article.get("analysis", {}),
-            summary=summary,
-            video_script=script
-        )
-        
-        final_output.append(article)
-        time.sleep(0.5)
+    briefing = state.get("daily_briefing", "")
+    
+    # We still want to ensure those articles are available in deep memory
+    # but they should have been persisted in the Entity Node already.
+    final_output = articles[:10]  # Show top 10 ranked articles
 
     state["final_output"] = final_output
     print("[🎬 OUTPUT AGENT]: Deep Memory Sync COMPLETE.")

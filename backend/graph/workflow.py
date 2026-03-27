@@ -12,6 +12,7 @@ from agents.synthesis_agent import synthesis_agent  # ⭐ NEW
 # -------------------------------
 class State(TypedDict):
     user_type: str
+    field: str # ⭐ NEW: selected sector (e.g. 'Business', 'Technology')
     articles: List[Dict[str, Any]]
     user_memory: Dict[str, Any]
     ranked_articles: List[Dict[str, Any]]
@@ -31,34 +32,59 @@ builder.add_node("ingestion", ingestion_agent)
 # -------------------------------
 # 🔹 2. Entity + Sentiment + Topic Node
 # -------------------------------
-def entity_analysis_node(state):
-
+async def entity_analysis_node(state):
+    import asyncio
+    from utils.scraper import scrape_full_article
     articles = state.get("articles", [])
-    enriched_articles = []
+    
+    # ⭐ CRITICAL: Limit concurrency to avoid 429 Rate Limits
+    semaphore = asyncio.Semaphore(5)
+    
+    async def process_one(article):
+        async with semaphore:
+            # Already processed? Skip expensive scraping and LLM
+            if article.get("is_processed") == 1 and len(article.get("text", "")) > 500:
+                return article
+                
+            link = article.get("link", article.get("id"))
+            if not link:
+                return article
 
-    for article in articles:
+            # 1. DEEP SCRAPING
+            try:
+                full_text = await asyncio.to_thread(scrape_full_article, link)
+                if full_text and len(full_text) > (len(article.get("text", "")) or 0):
+                    article["text"] = full_text
+            except: pass
 
-        text = article.get("text", "")
+            text = article.get("text", "") or article.get("title", "")
+            
+            try:
+                analysis = await asyncio.to_thread(analyze_article, text)
+                new_article = article.copy()
+                new_article["analysis"] = analysis
+                
+                if article.get("sector") in [None, "General", "unknown"]:
+                    new_article["sector"] = analysis.get("sector", article.get("sector", "General"))
+                
+                new_article["is_processed"] = 1
+                
+                # Persist
+                from database.sqlite_db import update_article_intelligence
+                await asyncio.to_thread(update_article_intelligence, link, analysis, "", "")
+                
+                return new_article
+            except Exception as e:
+                print(f"  [ENTITY_ERROR]: {str(e)[:50]}...")
+                return article
 
-        if not text:
-            enriched_articles.append({
-                **article,
-                "analysis": {
-                    "entities": [],
-                    "sentiment": "Unknown",
-                    "topic": "Unknown"
-                }
-            })
-            continue
-
-        analysis = analyze_article(text)
-
-        # Merge analysis into a new article dict explicitly to satisfy the linter
-        new_article = article.copy()
-        new_article["analysis"] = analysis
-        enriched_articles.append(new_article)
-
-    return {"articles": enriched_articles}
+    # Process TOP 15 articles in limited parallel batches
+    print(f"  [ORCHESTRATOR]: Deep-Scraping & Categorizing {min(len(articles), 15)} signals in throttled batches...")
+    enriched_articles = await asyncio.gather(*[process_one(a) for a in articles[:15]])
+    
+    # Combine with unprocessed rest
+    all_articles = enriched_articles + articles[15:]
+    return {"articles": all_articles}
 
 builder.add_node("entity_analysis", entity_analysis_node)
 
@@ -103,7 +129,12 @@ builder.add_node("memory", memory_node)
 # 🔹 4. Ranking Node (Groq LLM)
 # -------------------------------
 def ranking_node(state):
-    print(f"DEBUG: Ranking {len(state.get('articles', []))} articles...")
+    from agents.ranking_agent import ranking_agent
+    
+    articles = state.get("articles", [])
+    print(f"  [ORCHESTRATOR]: Running Sequential Intelligence Prioritization for {len(articles)} signals...")
+    
+    # We now call the optimized ranking_agent directly
     return ranking_agent(state)
 
 builder.add_node("ranking", ranking_node)

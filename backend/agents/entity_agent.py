@@ -15,10 +15,10 @@ You are an AI financial news analyzer.
 Extract:
 - companies
 - people
-- sector
+- sector (Business, Technology, Banking, Startups, Markets, World, Economy, Policy, or General)
 - keywords
 - sentiment (Positive, Negative, Neutral)
-- topic (Policy, Earnings, Funding, Layoffs)
+- topic (Policy, Earnings, Funding, Layoffs, etc.)
 - urgency (High, Medium, Low)
 - market_impact (High, Medium, Low)
 - investor_relevance (High, Medium, Low)
@@ -27,6 +27,7 @@ Extract:
 Return ONLY valid JSON in this format:
 {{
   "entities": [],
+  "sector": "",
   "sentiment": "",
   "topic": "",
   "urgency": "",
@@ -39,19 +40,28 @@ News:
 {article_text}
 """
 
-    response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0
-    )
-
-    result = response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0
+        )
+        result = response.choices[0].message.content
+    except Exception as e:
+        if "429" in str(e):
+            print("  ⚠️ [ENTITY]: Rate Limit Hit (429). Using baseline analysis.")
+            return {
+                "entities": [], "sector": "General", "sentiment": "Neutral", "topic": "General", "urgency": "Low",
+                "market_impact": "Medium", "investor_relevance": "Medium", "reasoning": "Rate limit fallback."
+            }
+        raise e
 
     # 🔥 convert string → JSON safely
     try:
         parsed = json.loads(result)
         return {
             "entities": parsed.get("entities", []),
+            "sector": parsed.get("sector", "General"),
             "sentiment": parsed.get("sentiment", "Unknown"),
             "topic": parsed.get("topic", "Unknown"),
             "urgency": parsed.get("urgency", "Unknown"),
@@ -62,6 +72,7 @@ News:
     except Exception:
         return {
             "entities": [],
+            "sector": "General",
             "sentiment": "Unknown",
             "topic": "Unknown",
             "urgency": "Unknown",

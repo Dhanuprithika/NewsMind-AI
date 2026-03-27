@@ -1,60 +1,67 @@
 import json
 import os
+import sqlite3
+from datetime import datetime
 
-MEMORY_FILE = "user_memory.json"
+MEMORY_FILE = os.path.join(os.path.dirname(__file__), "..", "user_memory.json")
 
-def user_memory_agent(state):
+def get_empty_memory():
+    return {
+        "sector_interest": {},
+        "topic_interest": {},
+        "company_interest": {},
+        "sentiment_preference": {},
+        "last_updated": datetime.now().isoformat()
+    }
 
-    articles = state.get("articles", [])
-
-    # create file if not exists
+def load_memory():
     if not os.path.exists(MEMORY_FILE):
-        with open(MEMORY_FILE, "w") as f:
-            json.dump({
-                "sector_interest": {},
-                "topic_interest": {},
-                "company_interest": {},
-                "sentiment_preference": {}
-            }, f)
+        return get_empty_memory()
+    try:
+        with open(MEMORY_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return get_empty_memory()
 
-    # load memory
-    with open(MEMORY_FILE, "r") as f:
-        memory = json.load(f)
-
-    for article in articles:
-
-        entities = article.get("entities", {})
-
-        sector = entities.get("sector")
-        topic = entities.get("topic")
-        companies = entities.get("companies", [])
-        sentiment = article.get("sentiment")
-
-        # update sector
-        if sector:
-            memory["sector_interest"][sector] = \
-                memory["sector_interest"].get(sector, 0) + 1
-
-        # update topic
-        if topic:
-            memory["topic_interest"][topic] = \
-                memory["topic_interest"].get(topic, 0) + 1
-
-        # update companies
-        for c in companies:
-            memory["company_interest"][c] = \
-                memory["company_interest"].get(c, 0) + 1
-
-        # update sentiment preference
-        if sentiment:
-            memory["sentiment_preference"][sentiment] = \
-                memory["sentiment_preference"].get(sentiment, 0) + 1
-
-    # save updated memory
+def save_memory(memory):
+    memory["last_updated"] = datetime.now().isoformat()
     with open(MEMORY_FILE, "w") as f:
         json.dump(memory, f, indent=2)
 
-    # add to state
-    state["user_memory"] = memory
+def signal_learning(signal_type: str, article_id: str):
+    """Processes a discrete user action (click, bookmark) to update memory."""
+    from database.sqlite_db import DB_PATH
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    article = conn.execute("SELECT sector, summary FROM articles WHERE id = ?", (article_id,)).fetchone()
+    conn.close()
 
+    if not article: return
+
+    memory = load_memory()
+    weight = 5 if signal_type == "bookmark" else 1
+    if signal_type == "time_spent": weight = 2
+
+    # Update sector weight
+    sector = article["sector"]
+    if sector:
+        memory["sector_interest"][sector] = memory["sector_interest"].get(sector, 0) + weight
+
+    save_memory(memory)
+    print(f"  [MEMORY]: Reinforced '{sector}' with +{weight} via {signal_type}")
+
+def user_memory_agent(state):
+    """Batch updates memory during the orchestration graph run."""
+    memory = load_memory()
+    articles = state.get("articles", [])
+
+    for article in articles:
+        entities = article.get("entities", {})
+        sector = entities.get("sector")
+        # During a passive crawl, we only nudge the memory (+0.1) unless clicked
+        if sector:
+            memory["sector_interest"][sector] = memory["sector_interest"].get(sector, 0) + 0.1
+
+    save_memory(memory)
+    state["user_memory"] = memory
     return state

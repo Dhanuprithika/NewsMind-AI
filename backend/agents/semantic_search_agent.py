@@ -3,12 +3,8 @@ import json
 from groq import Groq
 
 # Import vector store and sqlite functions
-try:
-    from backend.database.vector_store import vector_store
-    from backend.database.sqlite_db import get_articles_by_ids, search_articles
-except ImportError:
-    from database.vector_store import vector_store
-    from database.sqlite_db import get_articles_by_ids, search_articles
+from database.vector_store import vector_store
+from database.sqlite_db import get_articles_by_ids, search_articles
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY", "dummy_key")) if os.getenv("GROQ_API_KEY") else None
 
