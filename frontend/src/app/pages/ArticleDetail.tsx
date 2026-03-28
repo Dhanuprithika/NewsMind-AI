@@ -18,6 +18,7 @@ import { getArticle, saveArticle, type Article } from '../services/api';
 import { useSSE } from '../hooks/useSSE';
 import { AIProcessingLogs } from '../components/ai/AIProcessingLogs';
 import { VideoReelPlayer } from '../components/ai/VideoReelPlayer';
+import { VernacularLocalization } from '../components/ai/VernacularLocalization';
 import { useUser } from '../hooks/UserContext';
 
 export function ArticleDetail() {
@@ -243,6 +244,11 @@ export function ArticleDetail() {
             </div>
 
             <div className="lg:col-span-4 space-y-8">
+              {/* Vernacular Briefing Engine */}
+              {decodedId && (
+                <VernacularLocalization articleId={decodedId} />
+              )}
+
               {/* Sidebar Cards */}
               <div className="bg-white border border-gray-100 rounded-[2rem] p-8 shadow-sm">
                 <div className="flex items-center gap-2 mb-6">

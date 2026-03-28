@@ -149,3 +149,20 @@ export async function getBriefingScript(field: string, userType: string = 'gener
   const result = await res.json();
   return result.script;
 }
+
+export interface LocalizedNews {
+  language: string;
+  translated_title: string;
+  translated_summary: string;
+  key_points: string[];
+  local_context: string;
+  reader_impact: string;
+  glossary: { term: string; meaning: string }[];
+}
+
+export async function getLocalizedArticle(articleId: string, language: string = 'Hindi'): Promise<LocalizedNews> {
+  const res = await fetch(`${BASE_URL}/api/news/localize/${encodeURIComponent(articleId)}?language=${language}`);
+  if (!res.ok) throw new Error('Failed to localize article');
+  const result = await res.json();
+  return result.data;
+}

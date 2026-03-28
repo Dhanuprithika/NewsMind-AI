@@ -23,6 +23,7 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 from graph.workflow import graph, State
 from agents.video_script_agent import generate_video_script
+from agents.localization_agent import localize_article
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,7 +33,7 @@ app = FastAPI(title="AI Newsroom API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -48,14 +49,14 @@ class ProfileRequest(BaseModel):
     interests: list
     preferred_sectors: list
 
-# 🔥 GLOBAL PIPELINE REGISTRY (To avoid performance degradation)
+#  GLOBAL PIPELINE REGISTRY (To avoid performance degradation)
 RUNNING_PIPELINES = set()
 LAST_RUN_TIMES = {}
 
 async def run_intelligence_pipeline(field: str, user_type: str):
     pipeline_key = (field, user_type)
     
-    # 🌟 COOLDOWN: Don't run if updated in last 5 minutes to save token quota
+    #  COOLDOWN: Don't run if updated in last 5 minutes to save token quota
     from datetime import datetime, timedelta
     last_run = LAST_RUN_TIMES.get(pipeline_key)
     if last_run and (datetime.now() - last_run) < timedelta(minutes=5):
@@ -149,7 +150,7 @@ async def get_news(field: str = "General", user_type: str = "general", timeframe
         # 4. BACKGROUND INTELLIGENCE (Always trigger to keep cache fresh)
         asyncio.create_task(run_intelligence_pipeline(field, user_type))
 
-        # ⭐ REFINED: Get actual generated multi-article synthesis
+        #  REFINED: Get actual generated multi-article synthesis
         from database.sqlite_db import get_latest_briefing
         actual_briefing = get_latest_briefing(field)
         final_briefing = actual_briefing if actual_briefing else status_msg
@@ -421,6 +422,28 @@ async def get_article_detail(article_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/news/localize/{article_id:path}")
+async def get_localized_article(article_id: str, language: str = "Hindi"):
+    from database.sqlite_db import get_articles_by_ids
+    article_id = decode_url_id(article_id)
+    try:
+        articles = get_articles_by_ids([article_id])
+        if not articles:
+            raise HTTPException(status_code=404, detail="Article not found")
+        
+        article = articles[0]
+        title = article.get("title", "")
+        content = article.get("text", "")[:2000] # Use first 2000 chars for efficiency
+        
+        localized_data = await localize_article(title, content, language)
+        if not localized_data:
+            raise HTTPException(status_code=500, detail="Failed to localize article")
+            
+        return {"status": "success", "data": localized_data}
+    except Exception as e:
+        print(f"Error in get_localized_article: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/news/save")
 async def save_article_endpoint(request: SaveRequest):
     from database.sqlite_db import save_article
@@ -465,7 +488,7 @@ async def safe_groq_chat(prompt: str, temperature: float = 0.7):
     last_err = None
     for model_name in models:
         try:
-            print(f"  [🧠 AI]: Attempting response with {model_name}...")
+            print(f"  [ AI]: Attempting response with {model_name}...")
             response = client.chat.completions.create(
                 model=model_name,
                 messages=[{"role": "user", "content": prompt}],
@@ -474,7 +497,7 @@ async def safe_groq_chat(prompt: str, temperature: float = 0.7):
             return response.choices[0].message.content.strip()
         except Exception as e:
             last_err = e
-            print(f"  ⚠️ [AI FAIL]: {model_name} failed. Reason: {str(e)[:100]}...")
+            print(f"   [AI FAIL]: {model_name} failed. Reason: {str(e)[:100]}...")
             continue
     raise last_err or Exception("All AI signals lost. Try a different API key.")
 
