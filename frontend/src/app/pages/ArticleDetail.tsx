@@ -17,9 +17,12 @@ import { Container } from '../components/layout/Container';
 import { getArticle, saveArticle, type Article } from '../services/api';
 import { useSSE } from '../hooks/useSSE';
 import { AIProcessingLogs } from '../components/ai/AIProcessingLogs';
+import { VideoReelPlayer } from '../components/ai/VideoReelPlayer';
+import { useUser } from '../hooks/UserContext';
 
 export function ArticleDetail() {
   const { articleId } = useParams<{ articleId: string }>();
+  const { setSelectedField } = useUser();
   const navigate = useNavigate();
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
@@ -106,11 +109,14 @@ export function ArticleDetail() {
       <div className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-sm">
         <Container className="py-3 flex items-center justify-between">
           <button 
-            onClick={() => navigate(-1)}
+            onClick={() => {
+              setSelectedField('General');
+              navigate('/');
+            }}
             className="flex items-center gap-2 text-gray-600 hover:text-[#c0392b] transition-colors group"
           >
             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-            <span className="text-sm font-medium">Back to Terminal</span>
+            <span className="text-sm font-medium">Return to General</span>
           </button>
           <div className="flex items-center gap-3">
             <button 
@@ -184,6 +190,13 @@ export function ArticleDetail() {
               <p className="text-gray-400 text-[11px] font-mono mt-0.5">INTEL_ID: {decodedId.substring(0, 15)}... · {new Date(article.timestamp || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
             </div>
           </div>
+
+          {/* 16:9 News Explainer Player - Featured full-width position */}
+          {decodedId && (
+            <div className="mb-12">
+               <VideoReelPlayer type="reel" id={decodedId} />
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
             <div className="lg:col-span-8">

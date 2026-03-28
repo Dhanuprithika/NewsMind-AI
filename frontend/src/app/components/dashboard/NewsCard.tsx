@@ -42,12 +42,12 @@ export function NewsCard({
           <span
             className="absolute top-3 left-3 text-xs px-2.5 py-0.5 rounded-full tracking-wide"
             style={{
-              backgroundColor: getCategoryBg(article.category),
-              color: getCategoryColor(article.category),
+              backgroundColor: getCategoryBg(article.category || 'General'),
+              color: getCategoryColor(article.category || 'General'),
               fontFamily: "'Inter', sans-serif",
             }}
           >
-            {article.category}
+            {article.category || 'General'}
           </span>
           <button
             onClick={(e) => {

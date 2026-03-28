@@ -15,8 +15,8 @@ import { SkeletonCard } from '../components/dashboard/SkeletonCard';
 import { useNews } from '../hooks/useNews';
 import { useSSE } from '../hooks/useSSE';
 import { useUser } from '../hooks/UserContext';
-import type { Article } from '../services/api';
-import { Loader2 } from 'lucide-react';
+import { Article } from '../services/api';
+import { Loader2, ArrowLeft } from 'lucide-react';
 
 import { useParams, useNavigate } from 'react-router';
 
@@ -188,14 +188,28 @@ export function Dashboard() {
                 />
               </>
             ) : (
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-1 h-6 rounded-full bg-[#c0392b]" />
-                <h2 className="text-xl font-bold tracking-tight" style={{ fontFamily: "'Playfair Display', serif" }}>
-                  {selectedField} Intelligence Archive
-                </h2>
-                <span className="text-xs text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full border border-gray-200">
-                  Time: {timeframe.toUpperCase()} · Records: {data.articles.length}
-                </span>
+              <div className="flex flex-col gap-4 mb-6">
+                <button 
+                  onClick={() => setSelectedField('General')}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-gray-50 to-white border border-gray-200 text-gray-400 hover:text-blue-600 hover:border-blue-200 transition-all group w-fit rounded-full shadow-sm hover:shadow-md"
+                >
+                  <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+                  <span className="text-[10px] font-black uppercase tracking-[0.1em]">Return to General Terminal</span>
+                </button>
+                <div className="flex items-center gap-3">
+                  <div className="w-1.5 h-8 rounded-full bg-[#c0392b]" />
+                  <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-gray-900" style={{ fontFamily: "'Playfair Display', serif" }}>
+                    {selectedField} Intelligence Archive
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-[#c0392b] font-black uppercase tracking-widest bg-[#c0392b]/5 px-3 py-1 rounded-full border border-[#c0392b]/10">
+                      Archive: {timeframe.toUpperCase()}
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest bg-gray-100 px-3 py-1 rounded-full">
+                      {data.articles.length} Records
+                    </span>
+                  </div>
+                </div>
               </div>
             )}
 

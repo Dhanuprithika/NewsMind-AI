@@ -4,6 +4,7 @@ groq
 python-dotenv
 fastapi
 uvicorn
+sse-starlette
 pydantic
 requests
 beautifulsoup4

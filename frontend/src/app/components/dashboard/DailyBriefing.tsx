@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Coffee, ChevronDown, ChevronUp, Calendar } from 'lucide-react';
+import { Coffee, ChevronDown, ChevronUp, Calendar, Play } from 'lucide-react';
+import { VideoReelPlayer } from '../ai/VideoReelPlayer';
 
 interface DailyBriefingProps {
   text: string;
@@ -72,6 +73,13 @@ export function DailyBriefing({ text }: DailyBriefingProps) {
           )}
         </button>
       </div>
+
+      {/* AI Video Component: Only show when briefing text is present */}
+      {text && text.length > 50 && (
+        <div className="px-6 pb-6 pt-2 border-t border-white/5">
+           <VideoReelPlayer type="briefing" compact={true} />
+        </div>
+      )}
     </motion.div>
   );
 }

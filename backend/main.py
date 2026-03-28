@@ -22,6 +22,7 @@ load_dotenv()
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 from graph.workflow import graph, State
+from agents.video_script_agent import generate_video_script
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -172,6 +173,63 @@ async def get_news(field: str = "General", user_type: str = "general", timeframe
             "data": {"briefing": "Syncing signal...", "insight": "", "recommended": [], "categories": empty_cats, "articles": []}
         }
 
+@app.get("/api/news/video-script/reel/{article_id:path}")
+async def get_reel_script(article_id: str, user_type: str = "general"):
+    from database.sqlite_db import get_articles_by_ids
+    article_id = decode_url_id(article_id)
+    try:
+        articles = get_articles_by_ids([article_id])
+        if not articles:
+            raise HTTPException(status_code=404, detail="Article not found")
+        
+        article = articles[0]
+        # Use existing summary if available, else use text
+        content = article.get("summary") or article.get("text")[:1000]
+        
+        # Get user profile for personalization
+        from database.sqlite_db import get_user_profile
+        user_profile = get_user_profile(user_type)
+        interests = (user_profile or {}).get("interests", [])
+        
+        script = generate_video_script('reel', content, user_type, user_interests=interests)
+        
+        # Enrich script with Pexels visual URLs
+        from utils.pexels_helper import fetch_pexels_video
+        for scene in script.get("scenes", []):
+            if "visual_search_prompt" in scene:
+                scene["visual_url"] = fetch_pexels_video(scene["visual_search_prompt"])
+        
+        return {"status": "success", "script": script}
+    except Exception as e:
+        print(f"Error in get_reel_script: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/news/video-script/briefing/{field}")
+async def get_briefing_script(field: str, user_type: str = "general"):
+    from database.sqlite_db import get_latest_briefing
+    try:
+        briefing = get_latest_briefing(field)
+        if not briefing:
+            raise HTTPException(status_code=404, detail="Briefing not found for this sector")
+        
+        # Get user profile for personalization
+        from database.sqlite_db import get_user_profile
+        user_profile = get_user_profile(user_type)
+        interests = (user_profile or {}).get("interests", [])
+        
+        script = generate_video_script('briefing', briefing, user_type, user_interests=interests)
+        
+        # Enrich script with Pexels visual URLs
+        from utils.pexels_helper import fetch_pexels_video
+        for scene in script.get("scenes", []):
+            if "visual_search_prompt" in scene:
+                scene["visual_url"] = fetch_pexels_video(scene["visual_search_prompt"])
+        
+        return {"status": "success", "script": script}
+    except Exception as e:
+        print(f"Error in get_briefing_script: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 from sse_starlette.sse import EventSourceResponse
 
 class ActivityPayload(BaseModel):
@@ -248,7 +306,6 @@ async def stream_article_intel(article_id: str):
     async def event_generator():
         from database.sqlite_db import get_articles_by_ids, update_article_intelligence
         from agents.entity_agent import analyze_article
-        from agents.synthesis_agent import synthesis_agent
         try:
             articles = get_articles_by_ids([article_id])
             if not articles:
@@ -279,11 +336,12 @@ async def stream_article_intel(article_id: str):
             await asyncio.sleep(0.5)
             
             # Persist the elaborate summary
-            update_article_intelligence(article_id, analysis, briefing, "")
+            from database.sqlite_db import update_article_intelligence
+            update_article_intelligence(article_id, json.dumps(analysis), briefing, "")
             yield f"data: {json.dumps({'status': 'finished', 'message': 'Intelligence package complete.', 'article': article})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return EventSourceResponse(event_generator())
 
 def decode_url_id(url_id: str):
     import urllib.parse
@@ -396,61 +454,89 @@ async def update_preferences(request: ProfileRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 class ChatRequest(BaseModel):
-    article_id: str
+    article_id: str = None
     question: str
     user_id: str = "default_user"
+    user_type: str = "general"
+
+async def safe_groq_chat(prompt: str, temperature: float = 0.7):
+    """Retries with multiple models if rate limited."""
+    models = ["llama-3.1-8b-instant", "llama3-8b-8192", "gemma2-9b-it", "mixtral-8x7b-32768"]
+    last_err = None
+    for model_name in models:
+        try:
+            print(f"  [🧠 AI]: Attempting response with {model_name}...")
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            last_err = e
+            print(f"  ⚠️ [AI FAIL]: {model_name} failed. Reason: {str(e)[:100]}...")
+            continue
+    raise last_err or Exception("All AI signals lost. Try a different API key.")
 
 @app.post("/api/news/ask")
 async def ask_intelligence(request: ChatRequest):
     from database.sqlite_db import get_articles_by_ids, get_user_profile
     from agents.user_memory_agent import MEMORY_FILE
+    from agents.retrieval_agent import hybrid_search
     import json
     
     try:
-        # 1. Get Context: Article + Profile + Memory
-        articles = get_articles_by_ids([request.article_id])
-        if not articles:
-            raise HTTPException(status_code=404, detail="Article not found")
-        article = articles[0]
+        # 1. Get Context: Articles + Profile + Memory
+        article_context = ""
+        user_type = request.user_type or "general"
         
-        user_profile = get_user_profile(request.user_id)
+        if request.article_id and request.article_id != "general":
+            articles = get_articles_by_ids([request.article_id])
+            if articles:
+                article = articles[0]
+                article_context = f"CURRENT ARTICLE:\nTitle: {article.get('title')}\nSummary: {article.get('summary')}\nText: {article.get('text')[:1500]}"
         
+        # If no specific article OR we want broader context, do a quick cross-reference search
+        if not article_context:
+            print(f"  [CHAT]: Performing RAG search for general query: '{request.question}'")
+            search_results = hybrid_search(request.question, top_k=3)
+            if search_results:
+                article_context = "RELEVANT NEWS CONTEXT:\n" + "\n---\n".join([
+                    f"Title: {a.get('title')}\nSummary: {a.get('summary') or a.get('preview')}" 
+                    for a in search_results
+                ])
+
+        user_profile = get_user_profile(user_type)
         user_memory = {}
         if os.path.exists(MEMORY_FILE):
-            with open(MEMORY_FILE, "r") as f:
-                user_memory = json.load(f)
+            try:
+                with open(MEMORY_FILE, "r") as f:
+                    user_memory = json.load(f)
+            except: pass
 
-        # 2. Construct Prompt for Option B (Cross-Article Wisdom)
+        # 2. Construct Prompt
         prompt = f"""
-You are the NewsMind Intelligence Assistant.
+You are the NewsMind Intelligence Assistant. Your goal is to provide CRISP, BULLETED intelligence briefings.
+User Role: {user_type.upper()}
 User Question: "{request.question}"
 
-CURRENT ARTICLE CONTEXT:
-Title: {article.get('title')}
-Key Takeaways: {article.get('summary')}
-Full Text (excerpt): {article.get('text')[:2000]}
-
-USER PROFILE & MEMORY:
-Interests: {user_profile.get('interests')}
-Read History Signals: {json.dumps(user_memory)}
+{article_context or "CONSULTING INTERNAL INTELLIGENCE ARCHIVES: No specific real-time news articles found in the local database for this specific query."}
 
 Task:
-Answer the user's question with deep insights. 
-Connect this article to the user's overarching interests and previous reading trends if applicable. 
-Be professional, analytical, and supportive. If the news is complex, simplify the implications.
+1. Synthesize an answer in 3-4 SHARP BULLET POINTS tailored to a {user_type}.
+2. If real-time news (RELEVANT NEWS CONTEXT) exists above, prioritize it.
+3. If no local news is found, use your secondary intelligence archives to provide a high-fidelity expert answer anyway.
+4. PERSONALIZATION: If Student, explain implications for their career. If Investor, focus on market risk. If General, focus on broad impact.
+5. If an article title/link exists in context, end the response with: "For deeper reading, view the full report on the official portal."
+6. FORMATTING: Use markdown bullet points (-). Keep each point under 25 words.
 """
 
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7
-        )
-        answer = response.choices[0].message.content.strip()
+        answer = await safe_groq_chat(prompt)
         
         return {"status": "success", "answer": answer}
     except Exception as e:
         print(f"Error in ask_intelligence: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"status": "error", "answer": "I'm experiencing a brief signal interruption in my intelligence processing. Please try asking again in a moment."}
 
 if __name__ == "__main__":
     import uvicorn

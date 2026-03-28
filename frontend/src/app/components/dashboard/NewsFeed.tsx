@@ -109,11 +109,11 @@ export function NewsFeed({ articles, onReadMore, onBookmark, variant = 'list' }:
                   <span
                     className="text-xs px-2 py-0.5 rounded-full"
                     style={{
-                      backgroundColor: getCategoryBg(article.category),
-                      color: getCategoryColor(article.category),
+                      backgroundColor: getCategoryBg(article.category || 'General'),
+                      color: getCategoryColor(article.category || 'General'),
                     }}
                   >
-                    {article.category}
+                    {article.category || 'General'}
                   </span>
                   <span className="text-xs text-gray-400">{article.publishedAt}</span>
                 </div>

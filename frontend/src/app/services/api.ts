@@ -1,5 +1,34 @@
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
 
+export interface VideoScene {
+  scene_number: number;
+  duration_seconds: number;
+  scene_goal: string;
+  caption_text: string;
+  emotional_tone: string;
+  voiceover_line: string;
+  visual_type: string;
+  visual_concept: string;
+  visual_search_prompt: string;
+  on_screen_layout: string;
+  transition_style: string;
+  visual_url?: string; // Enriched by backend
+}
+
+export interface VideoScript {
+  video_type: string;
+  target_duration_seconds: number;
+  audience_profile: {
+    persona: string;
+    interests: string[];
+    tone_preference: string;
+  };
+  hook_line: string;
+  video_summary: string;
+  full_voiceover_script: string;
+  scenes: VideoScene[];
+}
+
 export interface Article {
   id: string;
   title: string;
@@ -88,7 +117,35 @@ export async function getHistory(timeframe: string = 'all', sector: string = 'Ge
   return result.history;
 }
 
+// POST /api/news/ask
+export async function askIntelligence(question: string, articleId?: string, userType: string = 'general'): Promise<string> {
+  const res = await fetch(`${BASE_URL}/api/news/ask`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, article_id: articleId, user_type: userType }),
+  });
+  if (!res.ok) throw new Error('AI Assistant is offline');
+  const result = await res.json();
+  return result.answer;
+}
+
 // SSE streaming hook logic helper
 export function getAgentStreamUrl(userType: string, field: string): string {
   return `${BASE_URL}/api/news/stream?user_type=${userType}&field=${field}`;
+}
+
+// GET /api/news/video-script/reel/{article_id}
+export async function getReelScript(articleId: string, userType: string = 'general'): Promise<VideoScript> {
+  const res = await fetch(`${BASE_URL}/api/news/video-script/reel/${encodeURIComponent(articleId)}?user_type=${userType}`);
+  if (!res.ok) throw new Error('Failed to generate reel script');
+  const result = await res.json();
+  return result.script;
+}
+
+// GET /api/news/video-script/briefing/{field}
+export async function getBriefingScript(field: string, userType: string = 'general'): Promise<VideoScript> {
+  const res = await fetch(`${BASE_URL}/api/news/video-script/briefing/${field}?user_type=${userType}`);
+  if (!res.ok) throw new Error('Failed to generate briefing script');
+  const result = await res.json();
+  return result.script;
 }

@@ -62,7 +62,8 @@ STRICT OUTPUT FORMAT (JSON ONLY):
                 # Persist to DB silently
                 try:
                     from database.sqlite_db import update_article_intelligence
-                    update_article_intelligence(article["id"], article.get("analysis", {}), article["summary"], "")
+                    analysis_str = json.dumps(article.get("analysis", {}))
+                    update_article_intelligence(article["id"], analysis_str, article["summary"], "")
                 except: pass
 
         # 4. Finalize Global Briefing

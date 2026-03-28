@@ -29,7 +29,12 @@ export function useSSE(field: string = 'General', userType: string = 'general', 
 
     eventSource.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data);
+        let rawData = event.data;
+        // Robust cleanup: some environments or proxies prefix with 'data: '
+        if (rawData.startsWith('data: ')) {
+          rawData = rawData.substring(6);
+        }
+        const data = JSON.parse(rawData);
         
         if (data.agent) {
           const message = data.message || AGENT_MESSAGES[data.agent] || `Agent ${data.agent} completed.`;

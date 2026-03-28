@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Search,
@@ -36,6 +36,7 @@ export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -95,7 +96,11 @@ export function Navbar() {
         <Container>
           <div className="flex items-center justify-between h-12 sm:h-14 gap-3">
             {/* Logo */}
-            <Link to="/" className="flex items-center gap-2 group shrink-0">
+            <Link 
+              to="/" 
+              onClick={() => setSelectedField('General')}
+              className="flex items-center gap-2 group shrink-0"
+            >
               <div className="w-8 h-8 bg-[#c0392b] rounded flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
                 <Zap className="w-4 h-4 text-white fill-white" />
               </div>
@@ -114,7 +119,10 @@ export function Navbar() {
               {['General', 'Markets', 'Business', 'Startups', 'Banking', 'Technology', 'Economy'].map((cat) => (
                 <button
                   key={cat}
-                  onClick={() => setSelectedField(cat)}
+                  onClick={() => {
+                    setSelectedField(cat);
+                    if (location.pathname !== '/') navigate('/');
+                  }}
                   className={`text-[11px] uppercase tracking-[0.15em] font-black transition-colors ${
                     selectedField === cat ? 'text-[#c0392b]' : 'text-gray-400 hover:text-gray-900'
                   }`}
@@ -212,7 +220,11 @@ export function Navbar() {
                     {['General', 'Markets', 'Business', 'Startups', 'Banking', 'Technology', 'Economy'].map((link) => (
                       <button
                         key={link}
-                        onClick={() => setSelectedField(link)}
+                        onClick={() => {
+                          setSelectedField(link);
+                          setMobileOpen(false);
+                          if (location.pathname !== '/') navigate('/');
+                        }}
                         className={`px-3.5 py-1.5 text-sm rounded-full border transition-all ${
                           selectedField === link
                             ? 'bg-[#c0392b] text-white border-[#c0392b]'
